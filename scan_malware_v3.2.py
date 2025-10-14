@@ -1,4 +1,3 @@
-
 """
 Ludang's Ultimate Cyber Malware Scanner v3.2
 By: Ludang Prasetyo Nugroho (nugra.online)
@@ -11,9 +10,9 @@ By: Ludang Prasetyo Nugroho (nugra.online)
 - Interactive options for quarantine, recycle, delete with secure confirmation.
 - Comprehensive system info: CPU, RAM, GPU, Network, Battery, Disks, Temps, BIOS, etc.
 - Enhanced table rendering with text wrapping for long values.
-- New: Animated borders, mission log output, and dynamic glitch effects.
+- New: Animated borders, mission log output, dynamic glitch effects, and boot sequence.
 
-Requirements (optional):
+Requirements:
     pip install colorama tqdm send2trash psutil
 """
 import argparse
@@ -31,7 +30,14 @@ from threading import Thread, Event
 from itertools import cycle
 import textwrap
 
-# Optional imports with fallbacks
+# Initialize colorama for Windows compatibility
+try:
+    from colorama import init as colorama_init, Fore, Style
+    colorama_init(autoreset=True)
+except ImportError:
+    print("[CRITICAL] Colorama not installed. Install with: pip install colorama")
+    sys.exit(1)
+
 try:
     from send2trash import send2trash
     HAS_SEND2TRASH = True
@@ -39,19 +45,16 @@ except ImportError:
     HAS_SEND2TRASH = False
 
 try:
-    from colorama import init as colorama_init, Fore, Style
-    colorama_init(autoreset=True)
-except ImportError:
-    class _F:
-        def __getattr__(self, name):
-            return ""
-    Fore = Style = _F()
-
-try:
     from tqdm import tqdm
     HAS_TQDM = True
 except ImportError:
     HAS_TQDM = False
+
+try:
+    import psutil
+except ImportError:
+    print("[CRITICAL] Psutil not installed. Install with: pip install psutil")
+    sys.exit(1)
 
 # ---------------------------
 # Helper Functions: System Info & Detection
@@ -67,7 +70,11 @@ def get_system_info():
         info["CPU"] = platform.processor() or "Unknown"
         info["Cores (Physical)"] = psutil.cpu_count(logical=False)
         info["Cores (Logical)"] = psutil.cpu_count(logical=True)
-        info["CPU Frequency"] = f"{psutil.cpu_freq().current:.2f} MHz (Max: {psutil.cpu_freq().max:.2f} MHz)"
+        try:
+            freq = psutil.cpu_freq()
+            info["CPU Frequency"] = f"{freq.current:.2f} MHz (Max: {freq.max:.2f} MHz)"
+        except:
+            info["CPU Frequency"] = "N/A"
         info["CPU Usage"] = f"{psutil.cpu_percent(interval=0.5)}%"
         info["RAM Total"] = f"{psutil.virtual_memory().total / (1024 ** 3):.2f} GB"
         info["RAM Available"] = f"{psutil.virtual_memory().available / (1024 ** 3):.2f} GB"
@@ -79,7 +86,7 @@ def get_system_info():
         info["Disk Partitions"] = ", ".join([p.device for p in psutil.disk_partitions()])
         info["Uptime"] = f"{round(time.time() - psutil.boot_time()) // 3600} hours"
         info["Processes"] = len(psutil.pids())
-        info["Logged Users"] = ", ".join([u.name for u in psutil.users()])
+        info["Logged Users"] = ", ".join([u.name for u in psutil.users()]) or "N/A"
         info["IP Address"] = socket.gethostbyname(socket.gethostname())
         
         # GPU Info
@@ -91,7 +98,7 @@ def get_system_info():
                 info["GPU"] = lines[1]
             else:
                 info["GPU"] = "N/A"
-        except Exception:
+        except:
             info["GPU"] = "N/A"
         
         # Network Interfaces
@@ -126,7 +133,7 @@ def get_system_info():
                 mb_cmd = subprocess.run(["wmic", "baseboard", "get", "product"], capture_output=True, text=True)
                 mb = mb_cmd.stdout.strip().splitlines()[-1].strip()
                 info["Motherboard"] = mb if mb else "N/A"
-            except Exception:
+            except:
                 info["BIOS Version"] = "N/A"
                 info["Motherboard"] = "N/A"
         
@@ -168,7 +175,7 @@ def run_clamscan_collect(paths):
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         out_lines = proc.stdout.splitlines()
     except Exception as e:
-        print(Fore.RED + "[!] ClamAV failed:", e)
+        print(Fore.RED + "[ERROR] ClamAV failed:", e)
         return []
     infected = []
     for line in out_lines:
@@ -192,13 +199,13 @@ def run_mp_tasks_and_collect(paths, result_list):
             try:
                 subprocess.run([mp, "-Scan", "-ScanType", "3", "-File", p],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
+            except:
                 pass
     else:
         try:
             subprocess.run(["powershell", "-Command", "Start-MpScan -ScanType QuickScan"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
+        except:
             pass
 
     try:
@@ -227,7 +234,7 @@ def run_mp_tasks_and_collect(paths, result_list):
                             result_list.append((r, cur_threat))
                         cur_resources = None
                         cur_threat = None
-    except Exception:
+    except:
         pass
 
 # ---------------------------
@@ -238,25 +245,25 @@ class AnimatedScanner:
         self.title = title
         self.paths = paths or [os.path.expanduser("~")]
         self._stop_event = Event()
-        self._spinner_cycle = cycle(["[HACKING]", "[INFILTRATING]", "[DECODING]", "[BREACHING]", "[CRACKING]", "[ANALYZING]"])
+        self._spinner_cycle = cycle(["[HACKING]", "[INFILTRATING]", "[DECODING]", "[BREACHING]", "[CRACKING]", "[SCANNING]"])
         self._binary_stream = cycle(["010101", "101010", "110011", "001100", "111000", "000111"])
         self._file_samples = [
             "kernel_exploit.dll", "rootkit.sys", "trojan_backdoor.exe", "ransomware.tmp", "spyware.dat",
             "phishing_script.js", "malware_payload.bin", "virus_infected.pdf", "worm_network.exe", "adware_popup.tmp"
         ]
         self._ascii_art = [
-            "  ____  ", " | __ ) ", " |  _ \\ ", " | |_) |", " |____/ ", "  ***  ", "  ***  "
+            "  ____  ", " | __ ) ", " |  _ \\ ", " | |_) |", " |____/ ", "  ***  ", "  ***  ", " [VIRUS] "
         ]
         self.start_time = None
         self.elapsed = 0.0
         self.checked = 0
-        self.fake_speed = random.uniform(1000, 2500)  # Increased speed for realism
+        self.fake_speed = random.uniform(1200, 3000)  # Increased speed for realism
         self.progress = 0.0
         self.status_message = "Initializing Cyber Matrix..."
         self.module_status = {"ClamAV": False, "Defender": False, "Mode": "Unknown"}
         self.system_info = get_system_info()
         self.glitch_counter = 0
-        self.border_cycle = cycle(["═", "▒", "█", "░", "■"])  # Animated border
+        self.border_cycle = cycle(["═", "▒", "█", "░", "■", "═"])
 
     def _human_time(self, seconds):
         """Format time in a human-readable way."""
@@ -295,10 +302,10 @@ class AnimatedScanner:
             self.elapsed = time.time() - self.start_time
             running = self._is_external_running(external_proc)
             if running:
-                inc = random.uniform(0.5, 3.0) * (1.0 - (self.progress / 100.0))
+                inc = random.uniform(0.5, 3.5) * (1.0 - (self.progress / 100.0))
                 self.progress = min(self.progress + inc, 95.0)
             else:
-                inc = random.uniform(10, 25)
+                inc = random.uniform(12, 30)
                 self.progress = min(self.progress + inc, 100.0)
 
             self.checked = int(self.progress / 100.0 * (self.fake_speed * max(1, self.elapsed)))
@@ -310,26 +317,26 @@ class AnimatedScanner:
             
             # Glitch effect
             self.glitch_counter += 1
-            glitch = random.choice(["~", "#", "%", "&", "$"]) if self.glitch_counter % 15 == 0 else ""
+            glitch = random.choice(["~", "#", "%", "&", "$", "@"]) if self.glitch_counter % 12 == 0 else ""
             
             # Build UI
             lines = []
             lines.append(Fore.CYAN + Style.BRIGHT + f"╔{border_char * 78}╗")
             lines.append(Fore.CYAN + f"║ {self.title.center(76)} {glitch}║")
             lines.append(Fore.CYAN + f"╠{border_char * 78}╣")
-            lines.append(Fore.MAGENTA + self._render_line(f"Status: {self.status_message}", f"Mode: {self.module_status['Mode']}"))
+            lines.append(Fore.MAGENTA + self._render_line(f"[STATUS] {self.status_message}", f"[MODE] {self.module_status['Mode']}"))
             lines.append(Fore.YELLOW + self._render_line(
-                f"Modules: ClamAV={Fore.GREEN + 'ON' if self.module_status['ClamAV'] else Fore.RED + 'OFF'} | Defender={Fore.GREEN + 'ON' if self.module_status['Defender'] else Fore.RED + 'OFF'}",
-                f"Elapsed: {self._human_time(self.elapsed)}"))
+                f"[MODULES] ClamAV={Fore.GREEN + 'ON' if self.module_status['ClamAV'] else Fore.RED + 'OFF'} | Defender={Fore.GREEN + 'ON' if self.module_status['Defender'] else Fore.RED + 'OFF'}",
+                f"[ELAPSED] {self._human_time(self.elapsed)}"))
             bar_width = 50
             filled = int((self.progress / 100.0) * bar_width)
             bar = Fore.GREEN + "[" + "#" * filled + Fore.RED + ">" + "." * (bar_width - filled - 1) + Fore.GREEN + "]"
-            lines.append(Fore.MAGENTA + self._render_line(f"{spinner}{bar} {self.progress:5.1f}%", f"Files Scanned: {self.checked:,}"))
-            lines.append(Fore.YELLOW + self._render_line(f"Target: {file_name}", f"Speed: {int(self.fake_speed)} files/s"))
-            lines.append(Fore.BLUE + self._render_line(f"Data Stream: {binary * 8}", f"Hex: {hex(random.randint(0, 0xFFFF))[2:].zfill(4).upper()}"))
+            lines.append(Fore.MAGENTA + self._render_line(f"{spinner}{bar} {self.progress:5.1f}%", f"[SCANNED] {self.checked:,} files"))
+            lines.append(Fore.YELLOW + self._render_line(f"[TARGET] {file_name}", f"[SPEED] {int(self.fake_speed)} files/s"))
+            lines.append(Fore.BLUE + self._render_line(f"[DATA] {binary * 8}", f"[HEX] {hex(random.randint(0, 0xFFFF))[2:].zfill(4).upper()}"))
             lines.append(Fore.CYAN + f"║ {ascii_line.center(76)} {glitch}║")
             lines.append(Fore.CYAN + f"╠{border_char * 78}╣")
-            lines.append(Fore.MAGENTA + "║ TIP: Press Ctrl+C to abort mission (partial intel retained). ║")
+            lines.append(Fore.MAGENTA + f"║ [TIP] Press Ctrl+C to abort mission (intel retained). {glitch}║")
             lines.append(Fore.CYAN + f"╚{border_char * 78}╝")
             
             sys.stdout.write("\x1b[2J\x1b[H")
@@ -340,7 +347,7 @@ class AnimatedScanner:
                 self.progress = 100.0
                 self._stop_event.set()
                 break
-            time.sleep(0.06)  # Smoother animation
+            time.sleep(0.05)  # Ultra-smooth animation
 
     def start_ui_for_process(self, external_proc, status_message="Infiltrating System..."):
         self.status_message = status_message
@@ -426,7 +433,10 @@ def interactive_menu(detections):
     qdir = ensure_quarantine_dir()
     print(Fore.RED + "[MISSION LOG] Intrusions detected in the matrix:")
     for i, (p, sig) in enumerate(detections, start=1):
-        print(Fore.RED + f"[ALERT {i}] Target: {p}  -- Signature: {sig}")
+        p_wrapped = textwrap.wrap(p, width=60)
+        print(Fore.RED + f"[ALERT {i}] Signature: {sig}")
+        for line in p_wrapped:
+            print(Fore.RED + f"  Target: {line}")
     while True:
         choice = input(Fore.CYAN + "[COMMAND] Select target (or 'all', 'exit' to abort): ").strip().lower()
         if choice in ("exit", "q"):
@@ -469,19 +479,26 @@ def interactive_menu(detections):
 # Cyber Intro & Welcome
 # ---------------------------
 def cyber_intro(system_info):
-    """Hacker-style intro with matrix rain, animated borders, and dynamic typing."""
+    """Hacker-style intro with boot sequence, matrix rain, and dynamic typing."""
     os.system("cls" if os.name == "nt" else "clear")
-    print(Fore.GREEN + Style.BRIGHT + "[INIT] Cyber Matrix Protocol Booting...")
-    time.sleep(1.5)
+    boot_sequence = [
+        "[BOOT] Initializing Cyber Matrix Protocol...",
+        "[BOOT] Loading Neural Network Interfaces...",
+        "[BOOT] Establishing Quantum Encryption...",
+        "[BOOT] Activating Intrusion Detection Systems..."
+    ]
+    for msg in boot_sequence:
+        print(Fore.GREEN + Style.BRIGHT + msg)
+        time.sleep(0.5)
     
     # Matrix Rain Effect
-    matrix_lines = [" " * random.randint(0, 80) + random.choice("01") for _ in range(30)]
-    for _ in range(20):
+    matrix_lines = [" " * random.randint(0, 80) + random.choice("01") for _ in range(35)]
+    for _ in range(25):
         sys.stdout.write("\x1b[2J\x1b[H")
         for line in matrix_lines:
             print(Fore.GREEN + Style.BRIGHT + line)
         matrix_lines = [line[1:] + random.choice("01") if random.random() > 0.1 else line for line in matrix_lines]
-        time.sleep(0.07)
+        time.sleep(0.06)
     
     # Welcome Message
     device_name = system_info.get("Hostname", "Unknown Device")
@@ -491,23 +508,23 @@ def cyber_intro(system_info):
     for c in welcome_msg:
         sys.stdout.write(Fore.MAGENTA + Style.BRIGHT + c)
         sys.stdout.flush()
-        time.sleep(0.012)
+        time.sleep(0.01)
     print("\n" + Fore.CYAN + f"╚{border_char * 78}╝")
     
     # Loading Bar with Glitch
     print(Fore.YELLOW + "[INIT] Deploying Cyber Arsenal...")
-    for i in range(0, 101, 3):
-        bar = "#" * (i // 3) + "." * (33 - i // 3)
-        glitch = random.choice(["~", "#", "%", "&"]) if random.random() < 0.15 else ""
+    for i in range(0, 101, 2):
+        bar = "#" * (i // 2) + "." * (50 - i // 2)
+        glitch = random.choice(["~", "#", "%", "&", "@"]) if random.random() < 0.2 else ""
         sys.stdout.write(Fore.CYAN + f"\r[{bar}] {i}% {glitch}")
         sys.stdout.flush()
-        time.sleep(0.05)
+        time.sleep(0.04)
     print(Fore.GREEN + "\n[✓] Arsenal Deployed!\n")
     time.sleep(0.5)
     
     # System Info Table
-    table_width = 78
-    key_width = 30
+    table_width = 80
+    key_width = 32
     value_width = table_width - key_width - 5
     print(Fore.CYAN + Style.BRIGHT + f"╔{border_char * table_width}╗")
     print(Fore.CYAN + f"║ {'SYSTEM INTEL REPORT'.center(table_width - 2)} ║")
@@ -531,22 +548,34 @@ def main():
     parser.add_argument("--paths", nargs="+", help="Paths to scan (override mode)")
     args = parser.parse_args()
     
-    system_info = get_system_info()
-    cyber_intro(system_info)
+    try:
+        system_info = get_system_info()
+        cyber_intro(system_info)
+    except Exception as e:
+        print(Fore.RED + f"[CRITICAL] Failed to initialize: {e}")
+        sys.exit(1)
     
     # Scan Mode Selection
     print(Fore.MAGENTA + Style.BRIGHT + "═[ SELECT CYBER SCAN MODE ]═")
     print(Fore.CYAN + "[1] Quick Scan (User Folders)")
     print(Fore.CYAN + "[2] Full Scan (All Devices/Drives)")
     print(Fore.CYAN + "[3] Custom Scan (Specify Path)")
-    choice = input(Fore.YELLOW + "[COMMAND] Execute Mode [1-3]: ").strip()
+    try:
+        choice = input(Fore.YELLOW + "[COMMAND] Execute Mode [1-3]: ").strip()
+    except KeyboardInterrupt:
+        print(Fore.YELLOW + "\n[MISSION LOG] Initialization aborted.")
+        sys.exit(0)
     
     if choice == "3":
-        path = input(Fore.CYAN + "[INPUT] Enter Target Path: ").strip()
-        if not os.path.exists(path):
-            print(Fore.RED + "[ERROR] Path not in matrix. Falling back to Quick Scan.")
-            path = os.path.expanduser("~")
-        paths = [path]
+        try:
+            path = input(Fore.CYAN + "[INPUT] Enter Target Path: ").strip()
+            if not os.path.exists(path):
+                print(Fore.RED + "[ERROR] Path not in matrix. Falling back to Quick Scan.")
+                path = os.path.expanduser("~")
+            paths = [path]
+        except KeyboardInterrupt:
+            print(Fore.YELLOW + "\n[MISSION LOG] Path input aborted.")
+            sys.exit(0)
     elif choice == "2":
         if platform.system() == "Windows":
             paths = [f"{d}:\\" for d in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" if os.path.exists(f"{d}:\\")]
@@ -589,7 +618,7 @@ def main():
                             file_path = left.strip()
                             sig = right.replace(" FOUND", "").strip()
                             infected.append((file_path, sig))
-                        except Exception:
+                        except:
                             pass
         elif mp:
             threats = []
@@ -618,20 +647,23 @@ def main():
     
     # Final Summary
     border_char = random.choice(["═", "▒", "█"])
-    print("\n" + Fore.CYAN + Style.BRIGHT + f"╔{border_char * 78}╗")
-    print(Fore.CYAN + f"║ {'CYBER SCAN DEBRIEF'.center(76)} ║")
-    print(Fore.CYAN + f"╠{border_char * 78}╣")
+    print("\n" + Fore.CYAN + Style.BRIGHT + f"╔{border_char * 80}╗")
+    print(Fore.CYAN + f"║ {'CYBER SCAN DEBRIEF'.center(78)} ║")
+    print(Fore.CYAN + f"╠{border_char * 80}╣")
     if not infected:
-        print(Fore.GREEN + "║ System Fortified: No Threats Infiltrated. ".center(76) + " ║")
+        print(Fore.GREEN + "║ System Fortified: No Threats Infiltrated. ".center(78) + " ║")
     else:
-        print(Fore.RED + f"║ Alert: {len(infected)} Intrusions Detected! ".center(76) + " ║")
+        print(Fore.RED + f"║ Alert: {len(infected)} Intrusions Detected! ".center(78) + " ║")
         for i, (p, sig) in enumerate(infected, start=1):
-            p_wrapped = textwrap.wrap(p, width=60)
-            print(Fore.RED + f"║ [ALERT {i}] Sig: {sig} ".ljust(76) + " ║")
+            p_wrapped = textwrap.wrap(p, width=62)
+            print(Fore.RED + f"║ [ALERT {i}] Sig: {sig} ".ljust(78) + " ║")
             for line in p_wrapped:
-                print(Fore.RED + f"║   Target: {line:<60} ║")
-    print(Fore.CYAN + f"╚{border_char * 78}╝\n")
+                print(Fore.RED + f"║   Target: {line:<62} ║")
+    print(Fore.CYAN + f"╚{border_char * 80}╝\n")
     
     # Interactive Actions
     interactive_menu(infected)
     print(Fore.CYAN + f"\n[MISSION LOG] Session Terminated at {datetime.now().strftime('%H:%M:%S')}. Stay Vigilant! 🔒")
+
+if __name__ == "__main__":
+    main()
